@@ -1,0 +1,26 @@
+services:
+  api:
+    image: yrwys/autodeploy-sgdb-backend:1.1
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: autodeploy-sgdb-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+
+  ui:
+    image: yrwys/autodeploy-sgdb-frontend:1.2
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: autodeploy-sgdb-frontend
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./app:/app/app
+    environment:
+      - API_URL=http://api:8000/api/v1/databases
+    depends_on:
+      - api
