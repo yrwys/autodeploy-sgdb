@@ -1,3 +1,4 @@
+# app/schemas.py
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 
@@ -29,7 +30,11 @@ class DeployDatabaseRequest(BaseModel):
         description="PVC storage size",
         example="20Gi"
     )
-    # UPDATED: Raised baseline defaults so patroni receives valid resource limits
+    storage_class: Optional[str] = Field(
+        default=None,
+        description="StorageClass for the persistent volume claim",
+        example="longhorn-class-a"
+    )
     cpu_request: str = Field(
         default="1000m",
         description="CPU allocation per instance (e.g., '500m', '1000m', '2000m')",

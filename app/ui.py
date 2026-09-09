@@ -5,57 +5,79 @@ import pandas as pd
 
 API_URL = os.getenv("API_URL", "http://127.0.0.1:8000/api/v1/databases")
 
-st.title("Database Provisioning Portal")
-st.markdown("Request a new isolated StackGres database cluster.")
+st.set_page_config(page_title="StackGres Cluster Portal", page_icon="🛢️")
+st.markdown("<h1 style='text-align: center;'>StackGres Cluster Portal</h1>", unsafe_allow_html=True)
+st.write("")
 
 # Form to create a new cluster
 with st.form("deploy_db"):
     col1, col2 = st.columns(2)
     with col1:
-        cluster_name = st.text_input("Cluster Name", value="tenant-db")
-        postgres_version = st.selectbox("PostgreSQL Version", ["16", "15", "14", "13"], index=0)
-        cpu_alloc = st.selectbox("CPU Allocation", ["500m", "1000m", "2000m", "4000m"], index=0)
+        cluster_name = st.text_input("Cluster Name", placeholder="tenant-db")
+        postgres_version = st.selectbox("PostgreSQL Version", ["Select PostgreSQL Version", "16", "15", "14", "13"], index=0)
+        cpu_alloc = st.selectbox("CPU Allocation", ["Select CPU Allocation", "500m", "1000m", "2000m", "4000m"], index=0)
+        storage = st.text_input("Storage Size", placeholder="10Gi")
     
     with col2:
-        namespace = st.text_input("Namespace", value="default")
+        namespace = st.text_input("Namespace", placeholder="default")
         instances = st.slider("Total Instances (includes 1 Primary)", min_value=1, max_value=5, value=2)
-        memory_alloc = st.selectbox("Memory Allocation", ["512Mi", "1Gi", "2Gi", "4Gi", "8Gi"], index=0)
-
-    storage = st.selectbox("Storage Size", ["10Gi", "20Gi", "50Gi", "100Gi"])
+        memory_alloc = st.selectbox("Memory Allocation", ["Select Memory Allocation", "512Mi", "1Gi", "2Gi", "4Gi", "8Gi"], index=0)
+        storage_class = st.selectbox("Storage Class", ["Select Storage Class", "longhorn-class-a", "longhorn-class-b", "longhorn-class-c", "longhorn-class-d"], index=0)
     
     submitted = st.form_submit_button("Deploy Cluster")
 
 if submitted:
-    # Extract clean CPU value (e.g. '1000m (1 CPU)' -> '1000m')
-    clean_cpu = cpu_alloc.split()[0]
+    errors = []
+    final_cluster_name = cluster_name.strip() if cluster_name.strip() else "tenant-db"
+    final_namespace = namespace.strip() if namespace.strip() else "default"
+    final_storage = storage.strip() if storage.strip() else "10Gi"
 
-    payload = {
-        "cluster_name": cluster_name,
-        "namespace": namespace,
-        "instances": instances,
-        "postgres_version": postgres_version,
-        "storage_size": storage,
-        "cpu_request": clean_cpu,
-        "memory_request": memory_alloc
-    }
-    with st.spinner(f"Provisioning {cluster_name}..."):
-        response = requests.post(API_URL, json=payload)
+    if postgres_version.startswith("Select"):
+        errors.append("Please select a valid PostgreSQL Version.")
+    if cpu_alloc.startswith("Select"):
+        errors.append("Please select a valid CPU Allocation.")
+    if memory_alloc.startswith("Select"):
+        errors.append("Please select a valid Memory Allocation.")
+
+    if errors:
+        for err in errors:
+            st.error(err)
+    else:
+        clean_cpu = cpu_alloc.split()[0]
+        selected_sc = None if storage_class.startswith("Select") else storage_class
+
+        payload = {
+            "cluster_name": final_cluster_name,
+            "namespace": final_namespace,
+            "instances": instances,
+            "postgres_version": postgres_version,
+            "storage_size": final_storage,
+            "storage_class": selected_sc,
+            "cpu_request": clean_cpu,
+            "memory_request": memory_alloc
+        }
         
-        if response.status_code == 201:
-            st.success("Cluster provisioning initiated successfully!")
-            data = response.json()
-            st.code(f"Primary Endpoint: {data['endpoints']['primary_rw']}")
-        else:
-            st.error(f"Error: {response.text}")
+        with st.spinner(f"Provisioning {final_cluster_name}..."):
+            try:
+                response = requests.post(API_URL, json=payload)
+                
+                if response.status_code == 201:
+                    st.success("Cluster provisioning initiated successfully!")
+                    data = response.json()
+                    st.code(f"Primary Endpoint: {data['endpoints']['primary_rw']}")
+                else:
+                    st.error(f"Error: {response.text}")
+            except requests.exceptions.RequestException as e:
+                st.error(f"Failed to connect to API: {e}")
 
 # Section to check status
 st.divider()
 st.subheader("Check Cluster Status")
 check_col1, check_col2 = st.columns(2)
 with check_col1:
-    check_name = st.text_input("Cluster Name to check")
+    check_name = st.text_input("Cluster Name to check", placeholder="tenant-db")
 with check_col2:
-    check_ns = st.text_input("Namespace to check", value="default")
+    check_ns = st.text_input("Namespace to check", placeholder="default")
 
 def render_cluster_dashboard(status_dict: dict, cluster_name: str, namespace: str):
     if not status_dict:
@@ -101,7 +123,7 @@ def render_cluster_dashboard(status_dict: dict, cluster_name: str, namespace: st
                 "Pending Restart": restart_needed,
                 "Replication Group": pod.get("replicationGroup")
             })
-        st.dataframe(pd.DataFrame(pods_data), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(pods_data), width=True, hide_index=True)
     else:
         st.info("No active pod instances reported yet.")
 
@@ -115,18 +137,24 @@ def render_cluster_dashboard(status_dict: dict, cluster_name: str, namespace: st
                 "Reason": c.get("reason"),
                 "Last Transition": c.get("lastTransitionTime")
             })
-        st.dataframe(pd.DataFrame(cond_data), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(cond_data), width=True, hide_index=True)
 
     with st.expander("🔍 View Raw Status JSON"):
         st.json(status_dict)
 
 if st.button("Check Status"):
-    if check_name:
-        res = requests.get(f"{API_URL}/{check_ns}/{check_name}")
-        if res.status_code == 200:
-            status_data = res.json().get("status", {})
-            render_cluster_dashboard(status_data, check_name, check_ns)
-        else:
-            st.warning("Cluster not found or still initializing.")
+    final_check_name = check_name.strip()
+    final_check_ns = check_ns.strip() if check_ns.strip() else "default"
+
+    if final_check_name:
+        try:
+            res = requests.get(f"{API_URL}/{final_check_ns}/{final_check_name}")
+            if res.status_code == 200:
+                status_data = res.json().get("status", {})
+                render_cluster_dashboard(status_data, final_check_name, final_check_ns)
+            else:
+                st.warning("Cluster not found or still initializing.")
+        except requests.exceptions.RequestException as e:
+            st.error(f"Failed to connect to API: {e}")
     else:
         st.warning("Please enter a Cluster Name.")

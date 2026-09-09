@@ -27,6 +27,7 @@ def create_database(payload: DeployDatabaseRequest):
             instances=payload.instances,
             postgres_version=payload.postgres_version,
             storage_size=payload.storage_size,
+            storage_class=payload.storage_class,  # ADDED
             cpu_request=payload.cpu_request,
             memory_request=payload.memory_request
         )
@@ -53,6 +54,7 @@ def create_database(payload: DeployDatabaseRequest):
             "read_replica_ro": ro_endpoint
         }
     )
+
 
 @app.get(
     "/api/v1/databases/{namespace}/{cluster_name}",

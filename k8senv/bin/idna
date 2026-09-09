@@ -1,4 +1,4 @@
-#!/home/andrie/K8s-API/k8senv/bin/python3
+#!/home/andrie/autodeploy-sgdb/k8senv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys

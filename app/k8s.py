@@ -111,8 +111,9 @@ def deploy_sg_cluster(
     instances: int = 2,
     postgres_version: str = "15",
     storage_size: str = "10Gi",
-    cpu_request: str = "500m",
-    memory_request: str = "512Mi",
+    storage_class: str = None,  # ADDED
+    cpu_request: str = "1000m",
+    memory_request: str = "1Gi",
     external_ip: str = None,
 ) -> dict:
     dyn_client = get_dynamic_client()
@@ -126,7 +127,7 @@ def deploy_sg_cluster(
             "StackGres CRD 'SGCluster' is not installed on this cluster."
         )
 
-    # 1. Create/Ensure the SGInstanceProfile exists with your desired CPU & Memory specs
+    # 1. Create/Ensure the SGInstanceProfile exists
     profile_name = f"{cluster_name}-custom-profile"
     create_instance_profile(
         profile_name=profile_name,
@@ -135,14 +136,19 @@ def deploy_sg_cluster(
         memory=memory_request,
     )
 
-    # 2. Create/Ensure the custom primary Service exists (e.g. test-sgdb-external)
+    # 2. Create/Ensure the custom primary Service exists
     external_svc_info = create_sg_external_service(
         cluster_name=cluster_name,
         namespace=namespace,
         external_ip=external_ip,
     )
 
-    # 3. Reference the profile in the SGCluster CRD
+    # 3. Build PVC configuration
+    pv_config = {"size": storage_size}
+    if storage_class:
+        pv_config["storageClass"] = storage_class
+
+    # 4. Construct SGCluster manifest
     manifest = {
         "apiVersion": "stackgres.io/v1",
         "kind": "SGCluster",
@@ -157,7 +163,7 @@ def deploy_sg_cluster(
             "instances": instances,
             "postgres": {"version": postgres_version},
             "sgInstanceProfile": profile_name,
-            "pods": {"persistentVolume": {"size": storage_size}},
+            "pods": {"persistentVolume": pv_config},
         },
     }
 
