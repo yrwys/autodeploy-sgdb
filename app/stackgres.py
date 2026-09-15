@@ -1,38 +1,42 @@
 from kubernetes import client, config, dynamic
 from kubernetes.client.exceptions import ApiException
 from kubernetes.dynamic.exceptions import ResourceNotFoundError
-
-
-def get_dynamic_client() -> dynamic.DynamicClient:
-    """Loads K8s config (in-cluster or local kubeconfig) and returns a DynamicClient."""
-    try:
-        config.load_incluster_config()
-    except config.ConfigException:
-        config.load_kube_config()
-
-    return dynamic.DynamicClient(client.ApiClient())
-
+from app.k8s_client import get_dynamic_client
+from app.namespace import ensure_namespace_allowed
+from app.resources import split_patroni_share, SETUP_FILESYSTEM_CPU, SETUP_FILESYSTEM_MEMORY
 
 def create_instance_profile(
     profile_name: str, namespace: str, cpu: str, memory: str
 ) -> str:
     dyn_client = get_dynamic_client()
 
-    # 1. Standardize on stackgres.io/v1
     profile_api = dyn_client.resources.get(
         api_version="stackgres.io/v1", kind="SGInstanceProfile"
     )
 
-    # 2. Structure CPU and memory under both requests and limits
+    patroni_cpu, patroni_memory = split_patroni_share(cpu, memory)
+
     profile_manifest = {
         "apiVersion": "stackgres.io/v1",
         "kind": "SGInstanceProfile",
         "metadata": {"name": profile_name, "namespace": namespace},
         "spec": {
-            "cpu": cpu,
-            "memory": memory,
-            "requests": {"cpu": cpu, "memory": memory},
-            "limits": {"cpu": cpu, "memory": memory},
+            "cpu": patroni_cpu,
+            "memory": patroni_memory,
+            "initContainers": {
+                "setup-filesystem": {
+                    "cpu": SETUP_FILESYSTEM_CPU,
+                    "memory": SETUP_FILESYSTEM_MEMORY,
+                }
+            },
+            "requests": {
+                "initContainers": {
+                    "setup-filesystem": {
+                        "cpu": SETUP_FILESYSTEM_CPU,
+                        "memory": SETUP_FILESYSTEM_MEMORY,
+                    }
+                }
+            },
         },
     }
 
@@ -55,7 +59,6 @@ def create_instance_profile(
 def create_sg_external_service(
     cluster_name: str, namespace: str = "default", external_ip: str = None
 ) -> dict:
-    """Creates or updates a ClusterIP Service pointing directly to the Patroni master pod."""
     dyn_client = get_dynamic_client()
     core_v1_api = client.CoreV1Api(dyn_client.client)
 
@@ -96,7 +99,6 @@ def create_sg_external_service(
         return {"name": created_svc.metadata.name, "status": "created"}
     except ApiException as e:
         if e.status == 409:
-            # Service already exists; patch spec to ensure selectors/externalIP match desired state
             patched_svc = core_v1_api.patch_namespaced_service(
                 name=service_name, namespace=namespace, body=service_body
             )
@@ -111,11 +113,12 @@ def deploy_sg_cluster(
     instances: int = 2,
     postgres_version: str = "15",
     storage_size: str = "10Gi",
-    storage_class: str = None,  # ADDED
+    storage_class: str = None,
     cpu_request: str = "1000m",
     memory_request: str = "1Gi",
     external_ip: str = None,
 ) -> dict:
+    ensure_namespace_allowed(namespace)
     dyn_client = get_dynamic_client()
 
     try:
@@ -127,7 +130,6 @@ def deploy_sg_cluster(
             "StackGres CRD 'SGCluster' is not installed on this cluster."
         )
 
-    # 1. Create/Ensure the SGInstanceProfile exists
     profile_name = f"{cluster_name}-custom-profile"
     create_instance_profile(
         profile_name=profile_name,
@@ -136,19 +138,16 @@ def deploy_sg_cluster(
         memory=memory_request,
     )
 
-    # 2. Create/Ensure the custom primary Service exists
     external_svc_info = create_sg_external_service(
         cluster_name=cluster_name,
         namespace=namespace,
         external_ip=external_ip,
     )
 
-    # 3. Build PVC configuration
     pv_config = {"size": storage_size}
     if storage_class:
         pv_config["storageClass"] = storage_class
 
-    # 4. Construct SGCluster manifest
     manifest = {
         "apiVersion": "stackgres.io/v1",
         "kind": "SGCluster",

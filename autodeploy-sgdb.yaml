@@ -20,6 +20,7 @@ rules:
       - services
       - pods
       - persistentvolumeclaims
+      - limitranges
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets"]
@@ -36,6 +37,31 @@ subjects:
 roleRef:
   kind: ClusterRole
   name: autodeploy-sgdb-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: stackgres-operator-allowlist-patcher
+  namespace: stackgres
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["stackgres-operator"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: stackgres-operator-allowlist-patcher-binding
+  namespace: stackgres
+subjects:
+  - kind: ServiceAccount
+    name: autodeploy-sgdb-sa
+    namespace: autodeploy-sgdb
+roleRef:
+  kind: Role
+  name: stackgres-operator-allowlist-patcher
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: apps/v1
@@ -58,7 +84,7 @@ spec:
       serviceAccountName: autodeploy-sgdb-sa
       containers:
         - name: backend
-          image: yrwys/autodeploy-sgdb-backend:1.2
+          image: yrwys/autodeploy-sgdb-backend:1.3
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
@@ -108,7 +134,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: yrwys/autodeploy-sgdb-frontend:1.3
+          image: yrwys/autodeploy-sgdb-frontend:1.4
           imagePullPolicy: Always
           ports:
             - containerPort: 8501

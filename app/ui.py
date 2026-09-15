@@ -9,22 +9,23 @@ st.set_page_config(page_title="StackGres Cluster Portal", page_icon="🛢️")
 st.markdown("<h1 style='text-align: center;'>StackGres Cluster Portal</h1>", unsafe_allow_html=True)
 st.write("")
 
-# Form to create a new cluster
+
 with st.form("deploy_db"):
     col1, col2 = st.columns(2)
     with col1:
         cluster_name = st.text_input("Cluster Name", placeholder="tenant-db")
         postgres_version = st.selectbox("PostgreSQL Version", ["Select PostgreSQL Version", "16", "15", "14", "13"], index=0)
-        cpu_alloc = st.selectbox("CPU Allocation", ["Select CPU Allocation", "500m", "1000m", "2000m", "4000m"], index=0)
+        cpu_alloc = st.selectbox("CPU per Instance", ["Select CPU Allocation", "2000m", "3000m", "4000m", "6000m"], index=0)
         storage = st.text_input("Storage Size", placeholder="10Gi")
     
     with col2:
         namespace = st.text_input("Namespace", placeholder="default")
         instances = st.slider("Total Instances (includes 1 Primary)", min_value=1, max_value=5, value=2)
-        memory_alloc = st.selectbox("Memory Allocation", ["Select Memory Allocation", "512Mi", "1Gi", "2Gi", "4Gi", "8Gi"], index=0)
+        memory_alloc = st.selectbox("Memory per Instance", ["Select Memory Allocation", "3Gi", "4Gi", "6Gi", "8Gi"], index=0)
         storage_class = st.selectbox("Storage Class", ["Select Storage Class", "longhorn-class-a", "longhorn-class-b", "longhorn-class-c", "longhorn-class-d"], index=0)
     
     submitted = st.form_submit_button("Deploy Cluster")
+
 
 if submitted:
     errors = []
@@ -70,7 +71,7 @@ if submitted:
             except requests.exceptions.RequestException as e:
                 st.error(f"Failed to connect to API: {e}")
 
-# Section to check status
+
 st.divider()
 st.subheader("Check Cluster Status")
 check_col1, check_col2 = st.columns(2)
@@ -78,6 +79,7 @@ with check_col1:
     check_name = st.text_input("Cluster Name to check", placeholder="tenant-db")
 with check_col2:
     check_ns = st.text_input("Namespace to check", placeholder="default")
+
 
 def render_cluster_dashboard(status_dict: dict, cluster_name: str, namespace: str):
     if not status_dict:
@@ -123,7 +125,7 @@ def render_cluster_dashboard(status_dict: dict, cluster_name: str, namespace: st
                 "Pending Restart": restart_needed,
                 "Replication Group": pod.get("replicationGroup")
             })
-        st.dataframe(pd.DataFrame(pods_data), width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(pods_data), width='stretch', hide_index=True)
     else:
         st.info("No active pod instances reported yet.")
 
@@ -137,10 +139,11 @@ def render_cluster_dashboard(status_dict: dict, cluster_name: str, namespace: st
                 "Reason": c.get("reason"),
                 "Last Transition": c.get("lastTransitionTime")
             })
-        st.dataframe(pd.DataFrame(cond_data), width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(cond_data), width='stretch', hide_index=True)
 
     with st.expander("🔍 View Raw Status JSON"):
         st.json(status_dict)
+
 
 if st.button("Check Status"):
     final_check_name = check_name.strip()

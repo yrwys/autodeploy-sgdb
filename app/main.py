@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, status
 from app.schemas import DeployDatabaseRequest, DeployDatabaseResponse, ClusterStatusResponse
-from app.k8s import deploy_sg_cluster, fetch_sg_cluster_status
+from app.stackgres import deploy_sg_cluster, fetch_sg_cluster_status
 from kubernetes.client.exceptions import ApiException
 
 app = FastAPI(
