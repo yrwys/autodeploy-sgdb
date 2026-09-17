@@ -13,13 +13,13 @@ st.write("")
 with st.form("deploy_db"):
     col1, col2 = st.columns(2)
     with col1:
-        cluster_name = st.text_input("Cluster Name", placeholder="tenant-db")
+        cluster_name = st.text_input("Cluster Name", placeholder="stackgres-cluster")
         postgres_version = st.selectbox("PostgreSQL Version", ["Select PostgreSQL Version", "16", "15", "14", "13"], index=0)
         cpu_alloc = st.selectbox("CPU per Instance", ["Select CPU Allocation", "2000m", "3000m", "4000m", "6000m"], index=0)
         storage = st.text_input("Storage Size", placeholder="10Gi")
     
     with col2:
-        namespace = st.text_input("Namespace", placeholder="default")
+        namespace = st.text_input("Namespace", placeholder="stackgres-namespace")
         instances = st.slider("Total Instances (includes 1 Primary)", min_value=1, max_value=5, value=2)
         memory_alloc = st.selectbox("Memory per Instance", ["Select Memory Allocation", "3Gi", "4Gi", "6Gi", "8Gi"], index=0)
         storage_class = st.selectbox("Storage Class", ["Select Storage Class", "longhorn-class-a", "longhorn-class-b", "longhorn-class-c", "longhorn-class-d"], index=0)
@@ -29,16 +29,24 @@ with st.form("deploy_db"):
 
 if submitted:
     errors = []
-    final_cluster_name = cluster_name.strip() if cluster_name.strip() else "tenant-db"
-    final_namespace = namespace.strip() if namespace.strip() else "default"
+    final_cluster_name = cluster_name.strip() if cluster_name.strip() else "stackgres-cluster"
+    final_namespace = namespace.strip() if namespace.strip() else "stackgres-namespace"
     final_storage = storage.strip() if storage.strip() else "10Gi"
 
+    if cluster_name.strip() == "":
+        errors.append("Please enter a valid Cluster Name.")
+    if final_namespace == "default" or namespace.strip() == "":
+        errors.append("Please enter a valid Namespace.")
     if postgres_version.startswith("Select"):
         errors.append("Please select a valid PostgreSQL Version.")
     if cpu_alloc.startswith("Select"):
         errors.append("Please select a valid CPU Allocation.")
     if memory_alloc.startswith("Select"):
         errors.append("Please select a valid Memory Allocation.")
+    if storage.strip() == "":
+        errors.append("Please enter a valid Storage Size.")
+    if storage_class.startswith("Select"):
+        errors.append("Please select a valid Storage Class.")
 
     if errors:
         for err in errors:
@@ -76,9 +84,9 @@ st.divider()
 st.subheader("Check Cluster Status")
 check_col1, check_col2 = st.columns(2)
 with check_col1:
-    check_name = st.text_input("Cluster Name to check", placeholder="tenant-db")
+    check_name = st.text_input("Cluster Name to check", placeholder="stackgres-cluster")
 with check_col2:
-    check_ns = st.text_input("Namespace to check", placeholder="default")
+    check_ns = st.text_input("Namespace to check", placeholder="stackgres-namespace")
 
 
 def render_cluster_dashboard(status_dict: dict, cluster_name: str, namespace: str):

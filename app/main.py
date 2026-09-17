@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, status
 from app.schemas import DeployDatabaseRequest, DeployDatabaseResponse, ClusterStatusResponse
 from app.stackgres import deploy_sg_cluster, fetch_sg_cluster_status
 from kubernetes.client.exceptions import ApiException
+from app.namespace import NamespaceNotFoundError
 
 app = FastAPI(
     title="Database Orchestration API",
@@ -19,7 +20,6 @@ def health_check():
     status_code=status.HTTP_201_CREATED
 )
 def create_database(payload: DeployDatabaseRequest):
-    """Triggers a one-shot deployment of a StackGres cluster."""
     try:
         deploy_sg_cluster(
             cluster_name=payload.cluster_name,
@@ -27,9 +27,13 @@ def create_database(payload: DeployDatabaseRequest):
             instances=payload.instances,
             postgres_version=payload.postgres_version,
             storage_size=payload.storage_size,
-            storage_class=payload.storage_class,  # ADDED
+            storage_class=payload.storage_class,
             cpu_request=payload.cpu_request,
             memory_request=payload.memory_request
+        )
+    except NamespaceNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
         )
     except ApiException as e:
         raise HTTPException(
@@ -61,7 +65,6 @@ def create_database(payload: DeployDatabaseRequest):
     response_model=ClusterStatusResponse
 )
 def get_database_status(cluster_name: str, namespace: str = "default"):
-    """Fetches the current StackGres CR status."""
     try:
         cluster_status = fetch_sg_cluster_status(cluster_name=cluster_name, namespace=namespace)
         return ClusterStatusResponse(

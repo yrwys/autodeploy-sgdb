@@ -13,6 +13,19 @@ POST_ROLLOUT_SETTLE_SECONDS = 30
 
 LIMITRANGE_NAME = "stackgres-default-limits"
 
+class NamespaceNotFoundError(Exception):
+    """Raised when the target namespace does not exist."""
+    pass
+
+
+def _namespace_exists(core_v1: client.CoreV1Api, namespace: str) -> bool:
+    try:
+        core_v1.read_namespace(name=namespace)
+        return True
+    except ApiException as e:
+        if e.status == 404:
+            return False
+        raise
 
 def _get_apps_v1_api() -> client.AppsV1Api:
     dyn_client = get_dynamic_client()
@@ -25,7 +38,6 @@ def _get_core_v1_api() -> client.CoreV1Api:
 
 
 def _get_current_allowed_namespaces(apps_v1: client.AppsV1Api) -> tuple[list[str], str]:
-    """Returns (current namespace list, container name that holds the env var)."""
     deployment = apps_v1.read_namespaced_deployment(
         name=OPERATOR_DEPLOYMENT, namespace=OPERATOR_NAMESPACE
     )
@@ -43,12 +55,6 @@ def _get_current_allowed_namespaces(apps_v1: client.AppsV1Api) -> tuple[list[str
 
 
 def _ensure_limitrange(core_v1: client.CoreV1Api, namespace: str) -> None:
-    """
-    Ensures the sidecar-container LimitRange exists in `namespace`. Without
-    this, any namespace whose ResourceQuota constrains limits.cpu/memory
-    will reject StackGres pods with "must specify limits.cpu for: ..." --
-    see app/resources.py for why this specific 250m/512Mi default exists.
-    """
     limit_range = client.V1LimitRange(
         metadata=client.V1ObjectMeta(name=LIMITRANGE_NAME, namespace=namespace),
         spec=client.V1LimitRangeSpec(
@@ -64,13 +70,18 @@ def _ensure_limitrange(core_v1: client.CoreV1Api, namespace: str) -> None:
     try:
         core_v1.create_namespaced_limit_range(namespace=namespace, body=limit_range)
     except ApiException as e:
-        if e.status != 409:  # already exists -- fine
+        if e.status != 409:
             raise
 
 
 def ensure_namespace_allowed(namespace: str) -> bool:
     apps_v1 = _get_apps_v1_api()
     core_v1 = _get_core_v1_api()
+
+    if not _namespace_exists(core_v1, namespace):
+        raise NamespaceNotFoundError(
+            f"Namespace '{namespace}' does not exist."
+        )
 
     _ensure_limitrange(core_v1, namespace)
 
